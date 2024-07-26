@@ -71,11 +71,11 @@ class OnlineRecognizerCtcImpl : public OnlineRecognizerImpl {
         model_(OnlineCtcModel::Create(config.model_config)),
         sym_(config.model_config.tokens),
         endpoint_(config_.endpoint_config) {
-    if (!config.model_config.wenet_ctc.model.empty()) {
-      // WeNet CTC models assume input samples are in the range
-      // [-32768, 32767], so we set normalize_samples to false
-      config_.feat_config.normalize_samples = false;
-    }
+    // if (!config.model_config.wenet_ctc.model.empty()) {
+    //   // WeNet CTC models assume input samples are in the range
+    //   // [-32768, 32767], so we set normalize_samples to false
+    //   config_.feat_config.normalize_samples = false;
+    // }
 
     InitDecoder();
   }

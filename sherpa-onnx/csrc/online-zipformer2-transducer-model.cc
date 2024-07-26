@@ -90,7 +90,7 @@ void OnlineZipformer2TransducerModel::InitEncoder(void *model_data,
 
   // get meta data
   Ort::ModelMetadata meta_data = encoder_sess_->GetModelMetadata();
-  if (config_.debug) {
+  if (config_.is_debug) {
     std::ostringstream os;
     os << "---encoder---\n";
     PrintModelMetadata(os, meta_data);
@@ -109,7 +109,7 @@ void OnlineZipformer2TransducerModel::InitEncoder(void *model_data,
   SHERPA_ONNX_READ_META_DATA(T_, "T");
   SHERPA_ONNX_READ_META_DATA(decode_chunk_len_, "decode_chunk_len");
 
-  if (config_.debug) {
+  if (config_.is_debug) {
     auto print = [](const std::vector<int32_t> &v, const char *name) {
       std::ostringstream os;
       os << name << ": ";
@@ -143,7 +143,7 @@ void OnlineZipformer2TransducerModel::InitDecoder(void *model_data,
 
   // get meta data
   Ort::ModelMetadata meta_data = decoder_sess_->GetModelMetadata();
-  if (config_.debug) {
+  if (config_.is_debug) {
     std::ostringstream os;
     os << "---decoder---\n";
     PrintModelMetadata(os, meta_data);
@@ -168,7 +168,7 @@ void OnlineZipformer2TransducerModel::InitJoiner(void *model_data,
 
   // get meta data
   Ort::ModelMetadata meta_data = joiner_sess_->GetModelMetadata();
-  if (config_.debug) {
+  if (config_.is_debug) {
     std::ostringstream os;
     os << "---joiner---\n";
     PrintModelMetadata(os, meta_data);

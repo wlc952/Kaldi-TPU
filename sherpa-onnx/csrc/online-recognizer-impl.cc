@@ -15,8 +15,8 @@ std::unique_ptr<OnlineRecognizerImpl> OnlineRecognizerImpl::Create(
     return std::make_unique<OnlineRecognizerTransducerImpl>(config);
   }
 
-  if (!config.model_config.wenet_ctc.model.empty() ||
-      !config.model_config.zipformer2_ctc.model.empty()) {
+  // if (!config.model_config.wenet_ctc.model.empty() ||
+  if (!config.model_config.zipformer2_ctc.model.empty()) {
     return std::make_unique<OnlineRecognizerCtcImpl>(config);
   }
 

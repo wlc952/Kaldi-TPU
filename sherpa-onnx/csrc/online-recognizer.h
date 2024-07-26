@@ -14,6 +14,7 @@
 #include "sherpa-onnx/csrc/online-model-config.h"
 #include "sherpa-onnx/csrc/online-stream.h"
 #include "sherpa-onnx/csrc/online-transducer-model-config.h"
+#include "sherpa-onnx/csrc/online-ctc-fst-decoder-config.h"
 #include "sherpa-onnx/csrc/parse-options.h"
 
 namespace sherpa_onnx {
@@ -72,6 +73,7 @@ struct OnlineRecognizerConfig {
   FeatureExtractorConfig feat_config;
   OnlineModelConfig model_config;
   EndpointConfig endpoint_config;
+  OnlineCtcFstDecoderConfig ctc_fst_decoder_config;
   bool enable_endpoint = true;
 
   std::string decoding_method = "greedy_search";
@@ -91,6 +93,7 @@ struct OnlineRecognizerConfig {
   OnlineRecognizerConfig(const FeatureExtractorConfig &feat_config,
                          const OnlineModelConfig &model_config,
                          const EndpointConfig &endpoint_config,
+                         const OnlineCtcFstDecoderConfig &ctc_fst_decoder_config,
                          bool enable_endpoint,
                          const std::string &decoding_method,
                          int32_t max_active_paths,
@@ -99,6 +102,7 @@ struct OnlineRecognizerConfig {
       : feat_config(feat_config),
         model_config(model_config),
         endpoint_config(endpoint_config),
+        ctc_fst_decoder_config(ctc_fst_decoder_config),
         enable_endpoint(enable_endpoint),
         decoding_method(decoding_method),
         max_active_paths(max_active_paths),

@@ -11,7 +11,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-
+#include <iostream>
 #include "sherpa-onnx/csrc/cat.h"
 #include "sherpa-onnx/csrc/macros.h"
 #include "sherpa-onnx/csrc/online-transducer-decoder.h"
@@ -427,7 +427,7 @@ OnlineZipformerTransducerModel::RunEncoder(Ort::Value features,
   encoder_inputs.reserve(1 + states.size());
 
   std::cout << "&&& RunEncoder ========================\n features( in 0 )" << std::endl;
-  Print3(&features)
+  // Print3(&features)
 
   encoder_inputs.push_back(std::move(features));
   for (auto &v : states) {

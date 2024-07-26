@@ -8,9 +8,11 @@
 #include <memory>
 #include <vector>
 
+#include "kaldi-decoder/csrc/faster-decoder.h"
 #include "onnxruntime_cxx_api.h"  // NOLINT
 #include "sherpa-onnx/csrc/context-graph.h"
 #include "sherpa-onnx/csrc/features.h"
+#include "sherpa-onnx/csrc/online-ctc-decoder.h"
 #include "sherpa-onnx/csrc/online-transducer-decoder.h"
 
 namespace sherpa_onnx {
@@ -74,6 +76,9 @@ class OnlineStream {
   void SetResult(const OnlineTransducerDecoderResult &r);
   OnlineTransducerDecoderResult &GetResult();
 
+  void SetCtcResult(const OnlineCtcDecoderResult &r);
+  OnlineCtcDecoderResult &GetCtcResult();
+
   void SetStates(std::vector<Ort::Value> states);
   std::vector<Ort::Value> &GetStates();
 
@@ -83,6 +88,11 @@ class OnlineStream {
    * @return Return the context graph for this stream.
    */
   const ContextGraphPtr &GetContextGraph() const;
+
+  // for online ctc decoder
+  void SetFasterDecoder(std::unique_ptr<kaldi_decoder::FasterDecoder> decoder);
+  kaldi_decoder::FasterDecoder *GetFasterDecoder() const;
+  int32_t &GetFasterDecoderProcessedFrames();
 
 
  private:

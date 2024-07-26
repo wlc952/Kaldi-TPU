@@ -31,6 +31,10 @@ set(sources
   online-zipformer2-ctc-model-config.cc
   online-zipformer2-ctc-model.cc
   online-zipformer2-transducer-model.cc
+  online-ctc-fst-decoder-config.cc
+  online-ctc-fst-decoder.cc
+  online-ctc-greedy-search-decoder.cc
+  online-ctc-model.cc
   onnx-utils.cc
   onnx-to-bm.cc
   pad-sequence.cc
@@ -70,12 +74,30 @@ else()
 endif()
 
 # target_include_directories(sherpa-onnx-core PUBLIC ${CMAKE_SOURCE_DIR})
-target_include_directories(sherpa-onnx-core PUBLIC /opt/sophon/libsophon-0.5.0/include)
-link_directories(/data/Qwen/lib_soc)
 
-target_link_libraries(sherpa-onnx-core -lm)
+# target_include_directories(sherpa-onnx-core PUBLIC /opt/sophon/libsophon-0.5.0/include)
+# link_directories(/opt/sophon/libsophon-0.5.0/lib)
 
-target_link_libraries(sherpa-onnx-core bmrt bmlib)
+target_include_directories(sherpa-onnx-core PUBLIC /data/Kaldi-TPU/debug_utils/include)
+link_directories(/data/Kaldi-TPU/debug_utils/lib_soc)
+
+if (CMAKE_TYPE STREQUAL "DUMP")
+    add_definitions(-DDUMP_TENSOR)
+    add_definitions(-DDEBUG --std=c++17 -fPIC -Wall -lcnpy) # -lcryptopp)
+    include_directories(${PROJECT_SOURCE_DIR}/sherpa-onnx/csrc/third_party/cnpy) # ln -s /data/Kaldi-TPU/third_party /data/Kaldi-TPU/sherpa-onnx/csrc
+    add_subdirectory(${PROJECT_SOURCE_DIR}/sherpa-onnx/csrc/third_party/cnpy) 
+else()
+    add_definitions(-DDEBUG --std=c++17 -fPIC -Wall) # -lcryptopp)
+endif()
+
+# target_link_libraries(sherpa-onnx-core -lm)
+if (CMAKE_TYPE STREQUAL "DUMP")
+    target_link_libraries(sherpa-onnx-core bmrt bmlib cnpy) # cryptopp) # PUBLIC
+else()
+    target_link_libraries(sherpa-onnx-core bmrt bmlib) # cryptopp) # PUBLIC
+endif()
+
+# target_link_libraries(sherpa-onnx-core bmrt bmlib)
 
 if(SHERPA_ONNX_ENABLE_TTS)
   target_link_libraries(sherpa-onnx-core piper_phonemize)

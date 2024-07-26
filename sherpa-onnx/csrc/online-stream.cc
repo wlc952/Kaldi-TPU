@@ -51,6 +51,10 @@ class OnlineStream::Impl {
 
   OnlineTransducerDecoderResult &GetResult() { return result_; }
 
+  OnlineCtcDecoderResult &GetCtcResult() { return ctc_result_; }
+
+  void SetCtcResult(const OnlineCtcDecoderResult &r) { ctc_result_ = r; }
+
   int32_t FeatureDim() const { return feat_extractor_.FeatureDim(); }
 
   void SetStates(std::vector<Ort::Value> states) {
@@ -61,6 +65,18 @@ class OnlineStream::Impl {
 
   const ContextGraphPtr &GetContextGraph() const { return context_graph_; }
 
+  void SetFasterDecoder(std::unique_ptr<kaldi_decoder::FasterDecoder> decoder) {
+    faster_decoder_ = std::move(decoder);
+  }
+
+  kaldi_decoder::FasterDecoder *GetFasterDecoder() const {
+    return faster_decoder_.get();
+  }
+
+  int32_t &GetFasterDecoderProcessedFrames() {
+    return faster_decoder_processed_frames_;
+  }
+
  private:
   FeatureExtractor feat_extractor_;
   /// For contextual-biasing
@@ -69,7 +85,10 @@ class OnlineStream::Impl {
   int32_t start_frame_index_ = 0;     // never reset
   int32_t segment_ = 0;
   OnlineTransducerDecoderResult result_;
+  OnlineCtcDecoderResult ctc_result_;
   std::vector<Ort::Value> states_;  // states for transducer or ctc models
+  std::unique_ptr<kaldi_decoder::FasterDecoder> faster_decoder_;
+  int32_t faster_decoder_processed_frames_ = 0;
 };
 
 OnlineStream::OnlineStream(const FeatureExtractorConfig &config /*= {}*/,
@@ -120,6 +139,15 @@ OnlineTransducerDecoderResult &OnlineStream::GetResult() {
   return impl_->GetResult();
 }
 
+
+OnlineCtcDecoderResult &OnlineStream::GetCtcResult() {
+  return impl_->GetCtcResult();
+}
+
+void OnlineStream::SetCtcResult(const OnlineCtcDecoderResult &r) {
+  impl_->SetCtcResult(r);
+}
+
 void OnlineStream::SetStates(std::vector<Ort::Value> states) {
   impl_->SetStates(std::move(states));
 }
@@ -130,6 +158,19 @@ std::vector<Ort::Value> &OnlineStream::GetStates() {
 
 const ContextGraphPtr &OnlineStream::GetContextGraph() const {
   return impl_->GetContextGraph();
+}
+
+void OnlineStream::SetFasterDecoder(
+    std::unique_ptr<kaldi_decoder::FasterDecoder> decoder) {
+  impl_->SetFasterDecoder(std::move(decoder));
+}
+
+kaldi_decoder::FasterDecoder *OnlineStream::GetFasterDecoder() const {
+  return impl_->GetFasterDecoder();
+}
+
+int32_t &OnlineStream::GetFasterDecoderProcessedFrames() {
+  return impl_->GetFasterDecoderProcessedFrames();
 }
 
 }  // namespace sherpa_onnx

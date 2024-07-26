@@ -39,7 +39,6 @@ std::vector<Ort::Value> GetOrtValuesFromBMTensors(std::vector<Tensor*>::const_it
 }
 
 void ConvertOrtValueToBMTensor(Ort::Value &ort_value, Tensor* const bmr_tensor) {
-  // assert ort_value中数据的数量和cvi_tensor的数据的数量一致
   size_t element_count = static_cast<size_t>(bmr_tensor->num_elements()); // uint64_t ->size_t
   assert(element_count == ort_value.GetTensorTypeAndShapeInfo().GetElementCount()); // size_t
   auto type = ort_value.GetTensorTypeAndShapeInfo().GetElementType();

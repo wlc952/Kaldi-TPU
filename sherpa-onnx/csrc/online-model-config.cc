@@ -12,7 +12,7 @@ namespace sherpa_onnx {
 
 void OnlineModelConfig::Register(ParseOptions *po) {
   transducer.Register(po);
-
+  zipformer2_ctc.Register(po);
   po->Register("tokens", &tokens, "Path to tokens.txt");
 
   po->Register("num-threads", &num_threads,
@@ -40,6 +40,10 @@ bool OnlineModelConfig::Validate() const {
   if (!FileExists(tokens)) {
     SHERPA_ONNX_LOGE("tokens: %s does not exist", tokens.c_str());
     return false;
+  }
+
+  if (!zipformer2_ctc.model.empty()) {
+    return zipformer2_ctc.Validate();
   }
 
   return transducer.Validate();
