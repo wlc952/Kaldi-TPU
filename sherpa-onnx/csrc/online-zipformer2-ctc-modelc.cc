@@ -10,7 +10,7 @@
 #include <numeric>
 #include <string>
 
-#include "bmruntime_cpp.h"
+#include "bmruntime_interface.h"
 #include "onnx-to-bm.h"
 #include "sherpa-onnx/csrc/cat.h"
 #include "sherpa-onnx/csrc/macros.h"
@@ -36,33 +36,121 @@ class OnlineZipformer2CtcModel::Impl {
 
   std::vector<Ort::Value> Forward(Ort::Value features,
                                   std::vector<Ort::Value> states) {
-    std::vector<Ort::Value> inputs;
-    inputs.reserve(1 + states.size());
+    // std::vector<Ort::Value> inputs;
+    // inputs.reserve(1 + states.size());
 
-    inputs.push_back(std::move(features));
-    for (auto &v : states) {
-      inputs.push_back(std::move(v));
+    // inputs.push_back(std::move(features));
+    // for (auto &v : states) {
+    //   inputs.push_back(std::move(v));
+    // }
+    // auto outputs = sess_->Run({}, input_names_ptr_.data(), inputs.data(), inputs.size(),
+    //                   output_names_ptr_.data(), output_names_ptr_.size());
+
+    // GetTensorMutableRawData<T> -> void*
+
+    // load input from ort values
+    auto &in_mem0 = net_info->stages[0].input_mems[0];
+    bm_memcpy_s2d(bm_handle, in_mem0, features.GetTensorMutableRawData());
+    for(int i = 0; i < states.size()-1; i++) {
+      auto &in_mem = net_info->stages[0].input_mems[i+1];
+      bm_memcpy_s2d(bm_handle, in_mem, states[i].GetTensorMutableRawData());
     }
 
-    auto &bm_inputs = _net->Inputs();
-    auto &bm_outputs = _net->Outputs();
+    int64_t* raw_data_ptr = static_cast<int64_t*>(states.back().GetTensorMutableRawData());
+    int32_t process_len = static_cast<int32_t>(*raw_data_ptr);
 
-    LoadOrtValuesToBMTensors(inputs, bm_inputs, _in_num);
+    bm_memcpy_s2d(bm_handle, net_info->stages[0].input_mems[states.size()], &process_len);
 
-    bool status = _net->Forward();
+#ifdef DUMP_TENSOR
+    dump_net_to_file(bm_handle, net_info, "./debug/tpu_input"+std::to_string(forward_cnt)+".npz"); // forward_cnt
+    // // Dump every Ort::Value in the inputs
+    dump_ort_mem_to_file(features, "./debug/ort_input"+std::to_string(forward_cnt)+".npz", "input_0");
+    for(int i = 0; i < states.size(); i++) {
+      dump_ort_mem_to_file(states[i], "./debug/ort_input"+std::to_string(forward_cnt)+".npz", "input_"+std::to_string(i+1));
+    }
+#endif
 
-    assert(BM_SUCCESS == status);
-    std::vector<Ort::Value> outputs_ort = GetOrtValuesFromBMTensors(bm_outputs.begin(), _out_num-1);
-    
+    // net launch
+    std::vector<bm_tensor_t> in_tensors(net_info->input_num);
+    std::vector<bm_tensor_t> out_tensors(net_info->output_num);
+
+    for (int i = 0; i < net_info->input_num; i++) {
+      bmrt_tensor_with_device(
+          &in_tensors[i], net_info->stages[0].input_mems[i],
+          net_info->input_dtypes[i], net_info->stages[0].input_shapes[i]);
+    }
+    for (int i = 0; i < net_info->output_num; i++) {
+      bmrt_tensor_with_device(
+          &out_tensors[i], net_info->stages[0].output_mems[i],
+          net_info->output_dtypes[i], net_info->stages[0].output_shapes[i]);
+    }
+    auto ret = bmrt_launch_tensor_ex(p_bmrt, net_info->name, in_tensors.data(),
+                                    net_info->input_num, out_tensors.data(),
+                                    net_info->output_num, true, false);
+    assert(ret);
+    bm_thread_sync(bm_handle);
+
+#ifdef DUMP_TENSOR
+    for(int i = 0; i < _out_num; i++) {
+      dump_tensor_to_file(bm_handle, out_tensors[i], net_info->stages[0].output_shapes[i], "./debug/tpu_output"+std::to_string(forward_cnt)+".npz",
+                         BM_FLOAT32,
+                         "output_"+std::to_string(i));
+    }
+#endif
+
+    // load output to ort values
+    std::vector<Ort::Value> outputs_ort;
+    outputs_ort.reserve(net_info->output_num);
+
     Ort::MemoryInfo memory_info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-    float temp = 0.0f;
-    bm_status_t status_tmp = bm_outputs[_out_num-1]->CopyTo((void*)(&temp));
-    assert(BM_SUCCESS == status_tmp);
-    int64_t intValue = static_cast<int64_t>(temp);
-    std::vector<int64_t> shape_tmp = {1};
-    Ort::Value lastOrtValue = Ort::Value::CreateTensor<int64_t>(memory_info, &intValue, 1, shape_tmp.data(), 1);
-    outputs_ort.push_back(std::move(lastOrtValue)); // lastOrtValue);
+    for(int i = 0; i < net_info->output_num-1; i++) {
+      ONNXTensorElementDataType type;
+      switch (net_info->output_dtypes[i]) {
+        case 0:
+          type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+          break;
+        default:
+          throw std::runtime_error("Unsupported data type for conversion.");
+      }
 
+      bm_shape_t tensor_shape = net_info->stages[0].output_shapes[i];
+      int64_t *dim64 = new int64_t[tensor_shape.num_dims];
+      // printf("%s ", net_info->output_names[i]);
+      // printf("shape: ");
+      int64_t num_elements = 1;
+      for (int _i = 0; _i <  tensor_shape.num_dims; ++_i) {
+        dim64[_i] = static_cast<int64_t>(tensor_shape.dims[_i]);
+        // printf("%ld ", dim64[_i]);
+        num_elements *= dim64[_i];
+      }
+      // printf(" == %ld \n", num_elements);
+      
+      void* temp_data_p = malloc(num_elements*sizeof(float));
+      bm_memcpy_d2s(bm_handle, temp_data_p, net_info->stages[0].output_mems[i]);
+      auto ort_value = Ort::Value::CreateTensor<float>(memory_info, (float*)temp_data_p, static_cast<size_t>(num_elements), dim64, tensor_shape.num_dims);
+      // std::free(temp_data_p); #################
+
+      outputs_ort.push_back(std::move(ort_value));
+    }
+
+    float process_len_float;
+    bm_memcpy_d2s(bm_handle, &process_len_float, net_info->stages[0].output_mems[net_info->output_num-1]);
+    int64_t process_len_int = static_cast<int64_t>(process_len_float);
+    // printf("process_len: %ld\n", process_len_int);
+    int64_t *dim64_1 = new int64_t[1];
+    dim64_1[0] = 1;
+    auto ort_value_1 = Ort::Value::CreateTensor<int64_t>(memory_info, &process_len_int, static_cast<size_t>(1), dim64_1, 1);
+    std::free(dim64_1);
+
+    outputs_ort.push_back(std::move(ort_value_1));
+
+#ifdef DUMP_TENSOR
+    for(int i = 0; i < _out_num; i++) {
+      dump_ort_mem_to_file(outputs_ort[i], "./debug/ort_output"+std::to_string(forward_cnt)+".npz", "output_"+std::to_string(i));
+    }
+#endif
+
+    forward_cnt++;
     return outputs_ort;
   }
 
@@ -246,17 +334,26 @@ class OnlineZipformer2CtcModel::Impl {
 
  private:
   void Init(const std::string &model_path) {
-    _ctx = std::make_shared<Context>(dev_id);
-    bm_status_t status = _ctx->load_bmodel(model_path.c_str());
+    // request bm_handle
+    bm_status_t status = bm_dev_request(&bm_handle, dev_id);
     assert(BM_SUCCESS == status);
 
-    // create Network
-    std::vector<const char *> network_names;
-    _ctx->get_network_names(&network_names);
-    _net = std::make_shared<Network>(*_ctx, network_names[0], 0);  // use stage[0]
-    // SHERPA_ONNX_LOGE("model_in out: %d %d", _net->info()->input_num, _net->info()->output_num);
-    assert(_net->info()->input_num == _in_num &&
-           _net->info()->output_num == _out_num);
+    // create bmruntime
+  // create bmruntime
+    p_bmrt = bmrt_create(bm_handle);
+    assert(NULL != p_bmrt);
+
+    // load bmodel by file
+    bool ret = bmrt_load_bmodel(p_bmrt, model_path.c_str());
+    assert(true == ret);
+    printf("Model setup is done.\n");
+
+    net_info = bmrt_get_network_info(p_bmrt, "zipformer2_ctc");
+    assert(NULL != net_info);
+
+    // setup input and output
+    assert(net_info->input_num == _in_num);
+    assert(net_info->output_num == _out_num);
 
     // set meta data
     encoder_dims_ = {192, 256, 384, 512, 384, 256};
@@ -362,9 +459,9 @@ class OnlineZipformer2CtcModel::Impl {
   Ort::AllocatorWithDefaultOptions allocator_;
 
   int dev_id = 0;
-
-  std::shared_ptr<bmruntime::Context> _ctx;
-  std::shared_ptr<bmruntime::Network> _net;
+  bm_handle_t bm_handle;
+  void *p_bmrt;
+  const bm_net_info_t *net_info;
   int _in_num = 99;
   int _out_num = 99;
 
@@ -381,6 +478,7 @@ class OnlineZipformer2CtcModel::Impl {
   int32_t T_ = 0;
   int32_t decode_chunk_len_ = 0;
   int32_t vocab_size_ = 0;
+  int forward_cnt = 0;
 };
 
 OnlineZipformer2CtcModel::OnlineZipformer2CtcModel(

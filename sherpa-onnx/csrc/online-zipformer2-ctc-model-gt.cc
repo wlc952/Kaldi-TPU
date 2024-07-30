@@ -10,17 +10,13 @@
 #include <numeric>
 #include <string>
 
-#include "bmruntime_cpp.h"
-#include "onnx-to-bm.h"
 #include "sherpa-onnx/csrc/cat.h"
 #include "sherpa-onnx/csrc/macros.h"
 #include "sherpa-onnx/csrc/onnx-utils.h"
 #include "sherpa-onnx/csrc/session.h"
 #include "sherpa-onnx/csrc/text-utils.h"
 #include "sherpa-onnx/csrc/unbind.h"
-// #include "debug_utils/include/utils.h"
-
-using namespace bmruntime;
+#include "debug_utils/include/utils.h"
 
 namespace sherpa_onnx {
 
@@ -31,7 +27,10 @@ class OnlineZipformer2CtcModel::Impl {
         env_(ORT_LOGGING_LEVEL_ERROR),
         sess_opts_(GetSessionOptions(config)),
         allocator_{} {
-          Init(config.zipformer2_ctc.model);
+    {
+      auto buf = ReadFile(config.zipformer2_ctc.model);
+      Init(buf.data(), buf.size());
+    }
   }
 
   std::vector<Ort::Value> Forward(Ort::Value features,
@@ -43,27 +42,24 @@ class OnlineZipformer2CtcModel::Impl {
     for (auto &v : states) {
       inputs.push_back(std::move(v));
     }
+#ifdef DUMP_TENSOR
+    // Dump every Ort::Value in the inputs
+    for(int i = 0; i < inputs.size(); i++) {
+      dump_mem_to_file(inputs[i], "./debug/gt_input"+std::to_string(forward_cnt)+".npz", "input_"+std::to_string(i));
+    }
+#endif
 
-    auto &bm_inputs = _net->Inputs();
-    auto &bm_outputs = _net->Outputs();
+    auto outputs = sess_->Run({}, input_names_ptr_.data(), inputs.data(), inputs.size(),
+                      output_names_ptr_.data(), output_names_ptr_.size());
 
-    LoadOrtValuesToBMTensors(inputs, bm_inputs, _in_num);
-
-    bool status = _net->Forward();
-
-    assert(BM_SUCCESS == status);
-    std::vector<Ort::Value> outputs_ort = GetOrtValuesFromBMTensors(bm_outputs.begin(), _out_num-1);
-    
-    Ort::MemoryInfo memory_info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-    float temp = 0.0f;
-    bm_status_t status_tmp = bm_outputs[_out_num-1]->CopyTo((void*)(&temp));
-    assert(BM_SUCCESS == status_tmp);
-    int64_t intValue = static_cast<int64_t>(temp);
-    std::vector<int64_t> shape_tmp = {1};
-    Ort::Value lastOrtValue = Ort::Value::CreateTensor<int64_t>(memory_info, &intValue, 1, shape_tmp.data(), 1);
-    outputs_ort.push_back(std::move(lastOrtValue)); // lastOrtValue);
-
-    return outputs_ort;
+#ifdef DUMP_TENSOR
+    // Dump every Ort::Value in the outputs
+    for(int i = 0; i < outputs.size(); i++) {
+      dump_mem_to_file(outputs[i], "./debug/gt_output"+std::to_string(forward_cnt)+".npz", "output_"+std::to_string(i));
+    }
+#endif
+    forward_cnt++;
+    return outputs;
   }
 
   int32_t VocabSize() const { return vocab_size_; }
@@ -90,7 +86,6 @@ class OnlineZipformer2CtcModel::Impl {
   std::vector<Ort::Value> StackStates(
       std::vector<std::vector<Ort::Value>> states) const {
     int32_t batch_size = static_cast<int32_t>(states.size());
-    int32_t num_encoders = static_cast<int32_t>(num_encoder_layers_.size());
 
     std::vector<const Ort::Value *> buf(batch_size);
 
@@ -168,7 +163,6 @@ class OnlineZipformer2CtcModel::Impl {
     assert(states.size() == m * 6 + 2);
 
     int32_t batch_size = states[0].GetTensorTypeAndShapeInfo().GetShape()[1];
-    int32_t num_encoders = num_encoder_layers_.size();
 
     std::vector<std::vector<Ort::Value>> ans;
     ans.resize(batch_size);
@@ -245,30 +239,60 @@ class OnlineZipformer2CtcModel::Impl {
   }
 
  private:
-  void Init(const std::string &model_path) {
-    _ctx = std::make_shared<Context>(dev_id);
-    bm_status_t status = _ctx->load_bmodel(model_path.c_str());
-    assert(BM_SUCCESS == status);
+  void Init(void *model_data, size_t model_data_length) {
+    sess_ = std::make_unique<Ort::Session>(env_, model_data, model_data_length,
+                                           sess_opts_);
 
-    // create Network
-    std::vector<const char *> network_names;
-    _ctx->get_network_names(&network_names);
-    _net = std::make_shared<Network>(*_ctx, network_names[0], 0);  // use stage[0]
-    // SHERPA_ONNX_LOGE("model_in out: %d %d", _net->info()->input_num, _net->info()->output_num);
-    assert(_net->info()->input_num == _in_num &&
-           _net->info()->output_num == _out_num);
+    GetInputNames(sess_.get(), &input_names_, &input_names_ptr_);
 
-    // set meta data
-    encoder_dims_ = {192, 256, 384, 512, 384, 256};
-    query_head_dims_ = {32, 32, 32, 32, 32, 32};
-    value_head_dims_ = {12, 12, 12, 12, 12, 12};
-    num_heads_ = {4, 4, 4, 8, 4, 4};
-    num_encoder_layers_ = {2, 2, 3, 4, 3, 2};
-    cnn_module_kernels_ = {31, 31, 15, 15, 15, 31};
-    left_context_len_ = {128, 64, 32, 16, 32, 64};
-    T_ = 45;
-    decode_chunk_len_ = 32;
-    vocab_size_ = 2000;
+    GetOutputNames(sess_.get(), &output_names_, &output_names_ptr_);
+    // get meta data
+    Ort::ModelMetadata meta_data = sess_->GetModelMetadata();
+    if (config_.is_debug) {
+      std::ostringstream os;
+      os << "---zipformer2_ctc---\n";
+      PrintModelMetadata(os, meta_data);
+      SHERPA_ONNX_LOGE("%s", os.str().c_str());
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;  // used in the macro below
+    SHERPA_ONNX_READ_META_DATA_VEC(encoder_dims_, "encoder_dims");
+    SHERPA_ONNX_READ_META_DATA_VEC(query_head_dims_, "query_head_dims");
+    SHERPA_ONNX_READ_META_DATA_VEC(value_head_dims_, "value_head_dims");
+    SHERPA_ONNX_READ_META_DATA_VEC(num_heads_, "num_heads");
+    SHERPA_ONNX_READ_META_DATA_VEC(num_encoder_layers_, "num_encoder_layers");
+    SHERPA_ONNX_READ_META_DATA_VEC(cnn_module_kernels_, "cnn_module_kernels");
+    SHERPA_ONNX_READ_META_DATA_VEC(left_context_len_, "left_context_len");
+
+    SHERPA_ONNX_READ_META_DATA(T_, "T");
+    SHERPA_ONNX_READ_META_DATA(decode_chunk_len_, "decode_chunk_len");
+
+    {
+      auto shape =
+          sess_->GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+      vocab_size_ = shape[2];
+    }
+
+    if (true) { //config_.is_debug) {
+      auto print = [](const std::vector<int32_t> &v, const char *name) {
+        std::ostringstream os;
+        os << name << ": ";
+        for (auto i : v) {
+          os << i << " ";
+        }
+        SHERPA_ONNX_LOGE("%s\n", os.str().c_str());
+      };
+      print(encoder_dims_, "encoder_dims");
+      print(query_head_dims_, "query_head_dims");
+      print(value_head_dims_, "value_head_dims");
+      print(num_heads_, "num_heads");
+      print(num_encoder_layers_, "num_encoder_layers");
+      print(cnn_module_kernels_, "cnn_module_kernels");
+      print(left_context_len_, "left_context_len");
+      SHERPA_ONNX_LOGE("T: %d", T_);
+      SHERPA_ONNX_LOGE("decode_chunk_len_: %d", decode_chunk_len_);
+      SHERPA_ONNX_LOGE("vocab_size_: %d", vocab_size_);
+    }
 
     InitStates();
   }
@@ -360,13 +384,14 @@ class OnlineZipformer2CtcModel::Impl {
   Ort::Env env_;
   Ort::SessionOptions sess_opts_;
   Ort::AllocatorWithDefaultOptions allocator_;
+  int forward_cnt = 0;
+  std::unique_ptr<Ort::Session> sess_;
 
-  int dev_id = 0;
+  std::vector<std::string> input_names_;
+  std::vector<const char *> input_names_ptr_;
 
-  std::shared_ptr<bmruntime::Context> _ctx;
-  std::shared_ptr<bmruntime::Network> _net;
-  int _in_num = 99;
-  int _out_num = 99;
+  std::vector<std::string> output_names_;
+  std::vector<const char *> output_names_ptr_;
 
   std::vector<Ort::Value> initial_states_;
 
@@ -386,6 +411,12 @@ class OnlineZipformer2CtcModel::Impl {
 OnlineZipformer2CtcModel::OnlineZipformer2CtcModel(
     const OnlineModelConfig &config)
     : impl_(std::make_unique<Impl>(config)) {}
+
+#if __ANDROID_API__ >= 9
+OnlineZipformer2CtcModel::OnlineZipformer2CtcModel(
+    AAssetManager *mgr, const OnlineModelConfig &config)
+    : impl_(std::make_unique<Impl>(mgr, config)) {}
+#endif
 
 OnlineZipformer2CtcModel::~OnlineZipformer2CtcModel() = default;
 
