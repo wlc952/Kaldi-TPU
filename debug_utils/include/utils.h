@@ -266,8 +266,17 @@ void dump_int_tensor(bm_handle_t bm_handle, bm_device_mem_t mem, int offset,
 //===------------------------------------------------------------===//
 #ifdef DUMP_TENSOR
 #include "cnpy.h"
+#include "onnxruntime_cxx_api.h"
+
+void dump_mem_to_file(Ort::Value &ortvalue, const std::string &filename,
+                      const std::string &tensor_name) {                   
+    std::vector<int64_t> long_shape = ortvalue.GetTensorTypeAndShapeInfo().GetShape();
+    std::vector<size_t> size_shape(long_shape.begin(), long_shape.end());
+    cnpy::npz_save(filename, tensor_name, ortvalue.GetTensorMutableData<float>(), size_shape, "a");
+}
+
 template <typename T>
-void dump_mem_to_file(bm_handle_t &bm_handle, bm_device_mem_t &t,
+void dump_tpumem_to_file(const bm_handle_t &bm_handle, const bm_device_mem_t &t,
                       std::vector<size_t> &&shape, const std::string &filename,
                       const std::string &tensor_name) {
   int cnt = bm_mem_get_device_size(t) / sizeof(T);
@@ -278,7 +287,7 @@ void dump_mem_to_file(bm_handle_t &bm_handle, bm_device_mem_t &t,
     std::vector<float> data(cnt);
     for (int i = 0; i < cnt; i++)
       // data[i] = bf16_to_fp32_value(buffer[i]);
-    data[i] = fp16_ieee_to_fp32_value(buffer[i]);
+      data[i] = fp16_ieee_to_fp32_value(buffer[i]);
     cnpy::npz_save(filename, tensor_name, data.data(), shape, "a");
   } else if constexpr (std::is_same_v<T, int32_t>) {
     std::vector<int> data(cnt);
