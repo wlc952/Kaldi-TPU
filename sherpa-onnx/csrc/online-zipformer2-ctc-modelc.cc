@@ -18,7 +18,7 @@
 #include "sherpa-onnx/csrc/session.h"
 #include "sherpa-onnx/csrc/text-utils.h"
 #include "sherpa-onnx/csrc/unbind.h"
-// #include "debug_utils/include/utils.h"
+#include "debug_utils/include/utils.h"
 
 using namespace bmruntime;
 
@@ -64,9 +64,9 @@ class OnlineZipformer2CtcModel::Impl {
 #ifdef DUMP_TENSOR
     dump_net_to_file(bm_handle, net_info, "./debug/tpu_input"+std::to_string(forward_cnt)+".npz"); // forward_cnt
     // // Dump every Ort::Value in the inputs
-    dump_ort_mem_to_file(features, "./debug/ort_input"+std::to_string(forward_cnt)+".npz", "input_0");
+    dump_mem_to_file(features, "./debug/ort_input"+std::to_string(forward_cnt)+".npz", "input_0");
     for(int i = 0; i < states.size(); i++) {
-      dump_ort_mem_to_file(states[i], "./debug/ort_input"+std::to_string(forward_cnt)+".npz", "input_"+std::to_string(i+1));
+      dump_mem_to_file(states[i], "./debug/ort_input"+std::to_string(forward_cnt)+".npz", "input_"+std::to_string(i+1));
     }
 #endif
 
@@ -146,7 +146,7 @@ class OnlineZipformer2CtcModel::Impl {
 
 #ifdef DUMP_TENSOR
     for(int i = 0; i < _out_num; i++) {
-      dump_ort_mem_to_file(outputs_ort[i], "./debug/ort_output"+std::to_string(forward_cnt)+".npz", "output_"+std::to_string(i));
+      dump_mem_to_file(outputs_ort[i], "./debug/ort_output"+std::to_string(forward_cnt)+".npz", "output_"+std::to_string(i));
     }
 #endif
 

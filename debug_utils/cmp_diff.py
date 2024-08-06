@@ -59,13 +59,13 @@ def mean_absolute_difference(matrix1, matrix2):
 
 tpu_in_prefix = "/data/Kaldi-TPU/build/debug/tpu_input"
 ort_in_prefix = "/data/Kaldi-TPU/build/debug/ort_input"
-gt_in_prefix = "/data/Kaldi-TPU/build/debug0/gt_input"
+gt_in_prefix = "/data/Kaldi-TPU/build/debug/gt_input"
 
 tpu_out_prefix = "/data/Kaldi-TPU/build/debug/tpu_output"
 ort_out_prefix = "/data/Kaldi-TPU/build/debug/ort_output"
-gt_out_prefix = "/data/Kaldi-TPU/build/debug0/gt_output"
+gt_out_prefix = "/data/Kaldi-TPU/build/debug/gt_output"
 
-for i in range(2):
+for i in range(10):
     print(f'==================== Forward {i} ======================')
     tpu_in = np.load(f"{tpu_in_prefix}{i}.npz")
     ort_in = np.load(f"{ort_in_prefix}{i}.npz")
@@ -74,8 +74,8 @@ for i in range(2):
     ort_out = np.load(f"{ort_out_prefix}{i}.npz")
     gt_out = np.load(f"{gt_out_prefix}{i}.npz")
     for idx in range(99):
-        if i == 0: breakpoint()
+        if i % 2 == 1: breakpoint()
         print(idx, mean_absolute_difference(tpu_in[f'input_{idx}'], gt_in[f'input_{idx}']), " | ", mean_absolute_difference(ort_in[f'input_{idx}'], gt_in[f'input_{idx}']))
         # print(idx, cosine_similarity(tpu_in[f'input_{idx}'], gt_in[f'input_{idx}']), " | ", cosine_similarity(ort_in[f'input_{idx}'], gt_in[f'input_{idx}']))
-        print(idx, mean_absolute_difference(tpu_out[f'output_{idx}'], gt_out[f'output_{idx}'])) #, " | ", mean_absolute_difference(ort_out[f'output_{idx}'], gt_out[f'output_{idx}']))
+        print(idx, mean_absolute_difference(tpu_out[f'output_{idx}'], gt_out[f'output_{idx}']), " | ", mean_absolute_difference(ort_out[f'output_{idx}'], gt_out[f'output_{idx}']))
         # print(idx, cosine_similarity(tpu_out[f'output_{idx}'], gt_out[f'output_{idx}']), " | ", cosine_similarity(ort_out[f'output_{idx}'], gt_out[f'output_{idx}']))

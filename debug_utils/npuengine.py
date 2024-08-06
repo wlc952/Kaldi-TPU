@@ -79,27 +79,27 @@ if __name__ == '__main__':
         # 2. 生成测试数据
         # input_data = generate_random_inputs(input_specs)
         # np.savez("input_data.npz", input_data)
-        input_data = np.load('/data/sherpa-onnx/build-aarch64-linux-gnu/debug/gt_input15.npz')
-        input_dict = {}
-        i = 0
-        for _spec in input_specs:
-            _name = _spec.name
-            _shape = [i if isinstance(i, int) else 1 for i in _spec.shape]
-            _type = _spec.type
-            input_dict[_name] = input_data[f'input_{i}']
-            if i == 98:
-                input_dict[_name] = input_dict[_name].astype(np.int64)
-            i += 1
-        breakpoint()
-        # 3. ONNX模型推理
-        onnx_results = onnx_session.run(None, input_dict)
-        # np.savez("onnx_inference_results.npz", onnx_results)
-        
-        # 4. 加载BModel
-        bmodel = EngineOV(bmodel_path)
-        input_dict['processed_lens'] = input_dict['processed_lens'].astype(np.int32)
-        # 5. BModel推理
-        bmodel_results = bmodel(input_dict)
-        import pdb;pdb.set_trace()
-        # 6. 比较结果
-        compare_results(onnx_results, bmodel_results)
+        for _i in range(1):
+            input_data = np.load(f'/data/Kaldi-TPU/build/debug/gt_input{_i}.npz')
+            input_dict = {}
+            i = 0
+            for _spec in input_specs:
+                _name = _spec.name
+                _shape = [i if isinstance(i, int) else 1 for i in _spec.shape]
+                _type = _spec.type
+                input_dict[_name] = input_data[f'input_{i}']
+                if i == 98:
+                    input_dict[_name] = input_dict[_name].astype(np.int64)
+                i += 1
+            # 3. ONNX模型推理
+            onnx_results = onnx_session.run(None, input_dict)
+            # np.savez("onnx_inference_results.npz", onnx_results)
+            
+            # 4. 加载BModel
+            bmodel = EngineOV(bmodel_path)
+            input_dict['processed_lens'] = input_dict['processed_lens'].astype(np.int32)
+            # 5. BModel推理
+            bmodel_results = bmodel(input_dict)
+            import pdb;pdb.set_trace()
+            # 6. 比较结果
+            compare_results(onnx_results, bmodel_results)
