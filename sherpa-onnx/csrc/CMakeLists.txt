@@ -79,7 +79,12 @@ endif()
 # link_directories(/opt/sophon/libsophon-0.5.0/lib)
 
 target_include_directories(sherpa-onnx-core PUBLIC /data/Kaldi-TPU/debug_utils/include)
-link_directories(/data/Kaldi-TPU/debug_utils/lib_soc)
+
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  link_directories(${CMAKE_SOURCE_DIR}/debug_utils/lib_soc)
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+  link_directories(${CMAKE_SOURCE_DIR}/debug_utils/lib_pcie)
+endif()
 
 if (CMAKE_TYPE STREQUAL "DUMP")
     add_definitions(-DDUMP_TENSOR)
