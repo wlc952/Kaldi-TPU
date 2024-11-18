@@ -78,7 +78,7 @@ endif()
 # target_include_directories(sherpa-onnx-core PUBLIC /opt/sophon/libsophon-0.5.0/include)
 # link_directories(/opt/sophon/libsophon-0.5.0/lib)
 
-target_include_directories(sherpa-onnx-core PUBLIC /data/Kaldi-TPU/debug_utils/include)
+target_include_directories(sherpa-onnx-core PUBLIC ${PROJECT_SOURCE_DIR}/debug_utils/include)
 
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
   link_directories(${CMAKE_SOURCE_DIR}/debug_utils/lib_soc)
